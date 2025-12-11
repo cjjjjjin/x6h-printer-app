@@ -77,45 +77,8 @@ namespace bluetoothTest
             return deviceId.Value;
         }
 
-        /*
-        protected async Task<PrinterGattService> GetServices(ulong deviceId)
-        {
-            // Get Bluetooth LE device
-            var device = await BluetoothLEDevice.FromBluetoothAddressAsync(deviceId);
-            if (device == null)
-                throw new Exception("DeviceID를 이용하여 Bluetooth 장비를 찾지 못했습니다.");
-
-
-            // Get GATT services
-            var result = await device.GetGattServicesAsync(BluetoothCacheMode.Uncached);
-            if (result.Status != GattCommunicationStatus.Success)
-                throw new Exception($"Gatt 서비스 정보를 가져오지 못했습니다. {result.Status}");
-
-            var ret = new PrinterGattService();
-            foreach (var service in result.Services)
-            {
-                var c = await service.GetCharacteristicsAsync();
-                if (c.Status != GattCommunicationStatus.Success)
-                    continue;
-
-                foreach (var characteristic in c.Characteristics)
-                {
-                    if (characteristic.Uuid == Guid.Parse("0000ae01-0000-1000-8000-00805f9b34fb"))
-                        ret.Writer = characteristic;
-                    else if (characteristic.Uuid == Guid.Parse("0000ae02-0000-1000-8000-00805f9b34fb"))
-                        ret.Reader = characteristic;
-
-                    Console.WriteLine($"  - Characteristic UUID: {characteristic.Uuid}");
-                    Console.WriteLine($"    Properties: {characteristic.CharacteristicProperties}");
-                }
-            }
-
-            return ret;
-        }
-        */
-
         protected async Task<List<GattDeviceService>> GetServices(ulong deviceId)
-        { 
+        {
             // Get Bluetooth LE device
             var device = await BluetoothLEDevice.FromBluetoothAddressAsync(deviceId);
             if (device == null)
@@ -193,7 +156,7 @@ namespace bluetoothTest
                 var reader = Windows.Storage.Streams.DataReader.FromBuffer(args.CharacteristicValue);
                 var data = new byte[reader.UnconsumedBufferLength];
                 reader.ReadBytes(data);
-                
+
                 // 이벤트 핸들러 해제
                 c.ValueChanged -= handler;
                 tcs.TrySetResult(data);
@@ -221,6 +184,7 @@ namespace bluetoothTest
 
             return await tcs.Task;
         }
+
     }
 
 
@@ -274,6 +238,30 @@ namespace bluetoothTest
             var payload = BitConverter.GetBytes(pixels);
             Write(Command.FeedPaper, payload).Wait();
         }
+
+        public void WriteText(string text)
+        {
+
+        }
+
+
+
+        public void Draw4BitGrayImage(byte[] imageData)
+        {
+            // Compress image data
+            var compressed = Compress(imageData);
+
+
+            // Make packet
+            var payload = new byte[4 + compressed.Length];
+            Array.Copy(BitConverter.GetBytes((ushort)imageData.Length), 0, payload, 0, 2); // Uncompressed length
+            Array.Copy(BitConverter.GetBytes((ushort)compressed.Length), 0, payload, 2, 2); // Compressed length
+            Array.Copy(compressed, 0, payload, 4, compressed.Length); // Compressed data
+
+            // Send command
+            Write(Command.GrayCompressedScanlineData, payload).Wait();
+        }
+
 
         public async Task GetDeviceStatusAsync()
         {
@@ -346,6 +334,11 @@ namespace bluetoothTest
 
             // Send Data
             await Write(_service.Writer, data);
+        }
+
+        protected byte[] Compress(byte[] plain)
+        {
+            return SharpLzo.Lzo.Compress(plain);
         }
 
 
